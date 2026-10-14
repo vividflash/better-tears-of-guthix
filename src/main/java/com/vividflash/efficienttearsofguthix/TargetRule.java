@@ -34,21 +34,31 @@ final class TargetRule
     static final int BLUE = 1;
     static final int GREEN = 2;
 
+    static final int STOP_DELAY = 0;
     static final int START_DELAY = 2;
 
     /**
      * Ticks of collecting a blue stream has to offer to be worth walking to,
      * by its place among the blue streams in moving order. The wall of an
-     * earlier one can still get a later one, the last one's wall cannot.
+     * earlier one can still get a later one, the last one's wall cannot, so
+     * the first is worth walking to for its wall alone. Chosen by simulation
+     * over 0 to 4 per place, on the worst entry timing and at 0 to 2 ticks of
+     * reaction.
      */
-    private static final int[] MIN_COLLECT = {1, 2, 3};
+    private static final int[] MIN_COLLECT = {0, 1, 3};
 
     /**
-     * With this many session ticks or fewer left no later stream is worth
-     * planning for: one tick of collecting is enough for any blue stream, and
-     * the one offering the most ticks before the session ends is picked.
+     * With this many session ticks or fewer left, and the session ending as
+     * the next burst starts, no later stream is worth planning for: one tick
+     * of collecting is enough for any blue stream, and the one offering the
+     * most ticks before the session ends is picked. Ending anywhere else in
+     * the rotation, this scored worse than the plain rule in simulation.
      */
     static final int ENDGAME = 16;
+
+    /** Session end ticks after the last blue stream's move, mod the period, at which the endgame applies. */
+    private static final int[] ENDGAME_OFFSETS = {15, 0};
+    private static final int PERIOD = StreamTracker.DEFAULT_PERIOD;
 
     /** A blue stream this close to moving counts as part of the current burst. */
     static final int BURST_WINDOW = 2;
@@ -98,12 +108,13 @@ final class TargetRule
      * @param previousTarget the wall chosen last tick, or -1
      * @param walking the player moved this tick; the previous target is then kept
      *     while it can still be reached, also on another wall's collect tile
-     * @param sessionLeft session ticks left, 0 when no session is running
+     * @param sessionLeft session ticks left, 1 on the last tick that collects, 0 when no session is running
      */
     static Decision decide(int[] colour, int[] ticksUntilMove, int playerX, int playerY, int previousTarget,
         boolean walking, int sessionLeft)
     {
-        boolean endgame = sessionLeft > 0 && sessionLeft <= ENDGAME;
+        boolean endgame = sessionLeft > 0 && sessionLeft <= ENDGAME
+            && endsAsBurstStarts(colour, ticksUntilMove, sessionLeft);
         int[] start = TogLayout.startTile(playerX, playerY);
         int playerWall = TogLayout.wallAtCollectTile(playerX, playerY);
         int[] distance = new int[WALLS];
@@ -113,8 +124,8 @@ final class TargetRule
         for (int wall = 0; wall < WALLS; wall++)
         {
             distance[wall] = TogLayout.costToWall(start[0], start[1], wall);
-            int present = sessionLeft > 0 ? Math.min(ticksUntilMove[wall], sessionLeft) : ticksUntilMove[wall];
-            collect[wall] = present - distance[wall] - START_DELAY;
+            int present = endgame ? Math.min(ticksUntilMove[wall], sessionLeft) : ticksUntilMove[wall];
+            collect[wall] = present - STOP_DELAY - distance[wall] - START_DELAY;
             int needed = endgame
                 ? 1
                 : MIN_COLLECT[Math.min(MIN_COLLECT.length - 1, blueRank(wall, colour, ticksUntilMove))];
@@ -378,6 +389,46 @@ final class TargetRule
             if (wall != playerWall && colour[wall] == BLUE && ticksUntilMove[wall] <= BURST_WINDOW)
             {
                 return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether the session ends 15 or 16 ticks after the last blue stream of a
+     * burst moves, as the next burst starts. The last blue is the one moving
+     * 1 and 2 ticks after the other two; its next move is ticksUntilMove away.
+     */
+    static boolean endsAsBurstStarts(int[] colour, int[] ticksUntilMove, int sessionLeft)
+    {
+        for (int wall = 0; wall < WALLS; wall++)
+        {
+            if (colour[wall] != BLUE)
+            {
+                continue;
+            }
+            boolean one = false;
+            boolean two = false;
+            for (int other = 0; other < WALLS; other++)
+            {
+                if (other != wall && colour[other] == BLUE)
+                {
+                    int gap = Math.floorMod(ticksUntilMove[wall] - ticksUntilMove[other], PERIOD);
+                    one |= gap == 1;
+                    two |= gap == 2;
+                }
+            }
+            if (one && two)
+            {
+                int offset = Math.floorMod(sessionLeft - ticksUntilMove[wall], PERIOD);
+                for (int endgameOffset : ENDGAME_OFFSETS)
+                {
+                    if (offset == endgameOffset)
+                    {
+                        return true;
+                    }
+                }
+                return false;
             }
         }
         return false;

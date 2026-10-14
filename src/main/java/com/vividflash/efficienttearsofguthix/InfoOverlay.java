@@ -27,27 +27,44 @@ package com.vividflash.efficienttearsofguthix;
 import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
+import java.awt.Point;
 import java.util.List;
 import javax.inject.Inject;
+import net.runelite.api.Skill;
+import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
+import net.runelite.client.ui.overlay.components.ComponentOrientation;
+import net.runelite.client.ui.overlay.components.ImageComponent;
 import net.runelite.client.ui.overlay.components.LayoutableRenderableEntity;
 import net.runelite.client.ui.overlay.components.LineComponent;
+import net.runelite.client.ui.overlay.components.SplitComponent;
 
-/** Stream order and session ticks left. The lines are rebuilt once per game tick and kept in between. */
+/**
+ * Stream order and at Juna the XP skill, rebuilt only when one of them or a
+ * setting changes. Below them the timer line, whose text is updated in place
+ * once per game tick, unless the timer has its own box.
+ */
 class InfoOverlay extends OverlayPanel
 {
     private final EfficientTearsOfGuthixConfig config;
     private final StreamAdvisor advisor;
+    private final SkillReward skillReward;
+    private final SkillIconManager skillIconManager;
 
-    /** The advisor revision the panel's lines were built from. */
-    private int builtRevision = -1;
+    private final LineComponent timer = LineComponent.builder().build();
+    private int builtInfoRevision = -1;
+    private int timerRevision = -1;
+    private boolean timerShown;
 
     @Inject
-    InfoOverlay(EfficientTearsOfGuthixConfig config, StreamAdvisor advisor)
+    InfoOverlay(EfficientTearsOfGuthixConfig config, StreamAdvisor advisor, SkillReward skillReward,
+        SkillIconManager skillIconManager)
     {
         this.config = config;
         this.advisor = advisor;
+        this.skillReward = skillReward;
+        this.skillIconManager = skillIconManager;
         setPosition(OverlayPosition.TOP_LEFT);
         setClearChildren(false);
     }
@@ -62,10 +79,18 @@ class InfoOverlay extends OverlayPanel
                 return null;
             }
 
+            boolean rebuild = advisor.infoRevision() != builtInfoRevision;
             int revision = advisor.revision();
-            if (revision != builtRevision)
+            if (revision != timerRevision)
             {
-                builtRevision = revision;
+                timerRevision = revision;
+                boolean shown = !advisor.splitTimer() && updateTimer(advisor, timer);
+                rebuild |= shown != timerShown;
+                timerShown = shown;
+            }
+            if (rebuild)
+            {
+                builtInfoRevision = advisor.infoRevision();
                 rebuild();
             }
 
@@ -105,29 +130,56 @@ class InfoOverlay extends OverlayPanel
                 .build());
         }
 
-        int entryWait = advisor.entryWait();
-        if (entryWait == 0)
+        Skill skill = skillReward.skill();
+        if (skill != null && config.showSkill() && advisor.atEntrance())
         {
-            lines.add(LineComponent.builder()
-                .left("Enter:")
-                .right("now")
-                .rightColor(Color.GREEN)
-                .build());
-        }
-        else if (entryWait > 0)
-        {
-            lines.add(LineComponent.builder()
-                .left("Enter in:")
-                .right(entryWait + " ticks")
+            lines.add(SplitComponent.builder()
+                .first(new ImageComponent(skillIconManager.getSkillImage(skill, true)))
+                .second(LineComponent.builder()
+                    .left("XP:")
+                    .right(skill.getName())
+                    .build())
+                .orientation(ComponentOrientation.HORIZONTAL)
+                .gap(new Point(4, 0))
                 .build());
         }
 
-        int ticksLeft = advisor.ticksLeft();
-        if (ticksLeft > 0)
+        if (timerShown)
         {
-            lines.add(LineComponent.builder()
-                .left("Ticks left: " + ticksLeft)
-                .build());
+            lines.add(timer);
         }
+    }
+
+    /**
+     * Sets the line to the entry timing at Juna or the session ticks left.
+     * False when there is neither, or the info panel is off.
+     */
+    static boolean updateTimer(StreamAdvisor advisor, LineComponent line)
+    {
+        int entryWait = advisor.entryWait();
+        int ticksLeft = advisor.ticksLeft();
+        if (entryWait == 0)
+        {
+            line.setLeft("Enter:");
+            line.setRight("now");
+            line.setRightColor(Color.GREEN);
+        }
+        else if (entryWait > 0)
+        {
+            line.setLeft("Enter in:");
+            line.setRight(entryWait + " ticks");
+            line.setRightColor(Color.WHITE);
+        }
+        else if (ticksLeft > 0)
+        {
+            line.setLeft("Ticks left:");
+            line.setRight(String.valueOf(ticksLeft));
+            line.setRightColor(Color.WHITE);
+        }
+        else
+        {
+            return false;
+        }
+        return advisor.showInfo();
     }
 }

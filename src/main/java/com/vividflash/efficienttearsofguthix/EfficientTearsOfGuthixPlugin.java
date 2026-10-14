@@ -30,6 +30,7 @@ import javax.inject.Inject;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.chat.ChatMessageBuilder;
 import net.runelite.client.chat.ChatMessageManager;
 import net.runelite.client.chat.QueuedMessage;
@@ -51,8 +52,8 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
     private static final String LAST_SEEN_VERSION_KEY = "lastSeenVersion";
 
     /** The release the one-time notice below belongs to, not the packaged version. */
-    static final String VERSION = "0.1";
-    private static final String UPDATE_MESSAGE = "Patch 0.1; initial release";
+    static final String VERSION = "0.2";
+    private static final String UPDATE_MESSAGE = "Patch 0.2; Which Skill gets XP shown at Juna, optional login reminder, changed minimum Ticks to 0/1/3  which beat the current 1/2/3 at every reaction (worst entry: +0.85 / +0.15 / +0.08 tears)";
 
     /** Dark red for the one-time notice, legible on either chatbox background. */
     private static final Color UPDATE_MESSAGE_COLOR = new Color(0x8B0000);
@@ -73,10 +74,16 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
     private StreamAdvisor streamAdvisor;
 
     @Inject
+    private SkillReward skillReward;
+
+    @Inject
     private TargetOverlay targetOverlay;
 
     @Inject
     private InfoOverlay infoOverlay;
+
+    @Inject
+    private TimerOverlay timerOverlay;
 
     @Inject
     private TearChangeOverlay tearChangeOverlay;
@@ -88,8 +95,11 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
         {
             streamAdvisor.start();
             eventBus.register(streamAdvisor);
+            skillReward.start();
+            eventBus.register(skillReward);
             overlayManager.add(targetOverlay);
             overlayManager.add(infoOverlay);
+            overlayManager.add(timerOverlay);
             overlayManager.add(tearChangeOverlay);
         }
         catch (Exception e)
@@ -105,7 +115,9 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
         {
             overlayManager.remove(targetOverlay);
             overlayManager.remove(infoOverlay);
+            overlayManager.remove(timerOverlay);
             overlayManager.remove(tearChangeOverlay);
+            eventBus.unregister(skillReward);
             eventBus.unregister(streamAdvisor);
             streamAdvisor.stop();
         }
@@ -135,6 +147,16 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
                 .append(UPDATE_MESSAGE_COLOR, UPDATE_MESSAGE)
                 .build())
             .build());
+    }
+
+    @Subscribe
+    public void onConfigChanged(ConfigChanged event)
+    {
+        if (CONFIG_GROUP.equals(event.getGroup()))
+        {
+            streamAdvisor.configChanged();
+            skillReward.configChanged();
+        }
     }
 
     @Provides

@@ -71,7 +71,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "showPossible",
         name = "Mark possible walls",
-        description = "Walls the blue streams that are about to move can land on",
+        description = "Walls the next blue stream can land on",
         position = 4
     )
     default boolean showPossible()
@@ -94,7 +94,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "showBad",
         name = "Mark bad walls",
-        description = "Ground in front of walls where no blue stream can land next, or a green one can",
+        description = "Walls no blue stream can land on next, or a green one can",
         position = 6
     )
     default boolean showBad()
@@ -117,7 +117,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "showStreamTicks",
         name = "Stream countdown",
-        description = "Ticks until the blue stream on the wall you stand at moves",
+        description = "Ticks until your wall's blue stream moves",
         position = 8
     )
     default boolean showStreamTicks()
@@ -128,8 +128,8 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "showTearChange",
         name = "Tear change",
-        description = "Beside the tear counter",
-        position = 10
+        description = "",
+        position = 12
     )
     default boolean showTearChange()
     {
@@ -139,7 +139,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "showInfo",
         name = "Info panel",
-        description = "Stream order, when to enter and the session ticks left",
+        description = "Stream order, session ticks left, and at Juna when to enter",
         position = 9
     )
     default boolean showInfo()
@@ -148,10 +148,43 @@ public interface EfficientTearsOfGuthixConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "splitTimer",
+        name = "Separate timer box",
+        description = "Enter timing and ticks left in their own box",
+        position = 10
+    )
+    default boolean splitTimer()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "showSkill",
+        name = "XP skill",
+        description = "At Juna, the skill that gets the XP",
+        position = 11
+    )
+    default boolean showSkill()
+    {
+        return true;
+    }
+
+    @ConfigItem(
+        keyName = "loginReminder",
+        name = "Login reminder",
+        description = "Chat message on login once the next run is open",
+        position = 13
+    )
+    default boolean loginReminder()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "allowBlueFirst",
         name = "Allow BBBGGG worlds",
-        description = "Blue streams move first there, so leaving a dry wall late costs tears",
-        position = 13
+        description = "",
+        position = 16
     )
     default boolean allowBlueFirst()
     {
@@ -161,8 +194,8 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "deprioritiseJuna",
         name = "Deprioritise Juna",
-        description = "On a world whose stream order is not supported, a left click on Juna walks instead of talking",
-        position = 12
+        description = "On other stream orders, left click on Juna walks",
+        position = 15
     )
     default boolean deprioritiseJuna()
     {
@@ -172,8 +205,8 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "deprioritiseGreen",
         name = "Deprioritise green walls",
-        description = "A left click on a wall with a green stream walks instead of collecting",
-        position = 11
+        description = "Left click on a green wall walks",
+        position = 14
     )
     default boolean deprioritiseGreen()
     {

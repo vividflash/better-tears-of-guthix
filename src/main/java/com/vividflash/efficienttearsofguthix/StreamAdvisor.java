@@ -123,6 +123,10 @@ public class StreamAdvisor
     private volatile boolean orderSupported;
     /** Changes whenever the cached state does; the overlays rebuild what they draw when it has. */
     private volatile int revision;
+    /** Changes only with the order, the XP skill, being at Juna or a setting. */
+    private volatile int infoRevision;
+    private volatile boolean showInfo;
+    private volatile boolean splitTimer;
     /** False from start until the first game tick: lastGameTick is stale until then. */
     private volatile boolean ticked;
     private boolean deprioritiseJuna;
@@ -141,12 +145,17 @@ public class StreamAdvisor
     private int lastGameTick;
     private int ticksLeft;
     private int lastCountdown = -1;
+    /** Something is tracked that leaving the region has to clear; outside it nothing else runs. */
+    private boolean needsClear;
+    /** In the region, no session running and off the cave floor: at Juna. */
+    private boolean atEntrance;
 
     void start()
     {
         try
         {
             ticked = false;
+            configChanged();
             clear();
             ticksLeft = 0;
             lastCountdown = -1;
@@ -221,6 +230,17 @@ public class StreamAdvisor
             lastGameTick = tick;
             ticked = true;
 
+            Player local = client.getLocalPlayer();
+            WorldPoint position = local == null ? null : local.getWorldLocation();
+            if (position == null || position.getRegionID() != TogLayout.REGION)
+            {
+                if (needsClear)
+                {
+                    clear();
+                }
+                return;
+            }
+
             int countdown = client.getVarbitValue(VarbitID.TOG_COUNTDOWN);
             if (countdown != lastCountdown)
             {
@@ -233,17 +253,16 @@ public class StreamAdvisor
                 ticksLeft--;
             }
 
-            Player local = client.getLocalPlayer();
-            WorldPoint position = local == null ? null : local.getWorldLocation();
-            if (position == null || position.getRegionID() != TogLayout.REGION)
-            {
-                clear();
-                return;
-            }
-
             inRegion = true;
+            needsClear = true;
             WorldView view = client.getTopLevelWorldView();
             onPlane = view != null && view.getPlane() == TogLayout.PLANE;
+            boolean entrance = lastCountdown <= 0 && !TogLayout.isFloor(position.getX(), position.getY());
+            if (entrance != atEntrance)
+            {
+                atEntrance = entrance;
+                infoRevision++;
+            }
             deprioritiseJuna = config.deprioritiseJuna();
             deprioritiseGreen = config.deprioritiseGreen();
 
@@ -260,8 +279,14 @@ public class StreamAdvisor
             {
                 streamOrder = order;
                 orderText = order == null ? null : coloured(order);
+                infoRevision++;
             }
-            orderSupported = supported(order);
+            boolean supported = supported(order);
+            if (supported != orderSupported)
+            {
+                orderSupported = supported;
+                infoRevision++;
+            }
 
             decide(tick, position);
             revision++;
@@ -343,6 +368,11 @@ public class StreamAdvisor
         return onPlane;
     }
 
+    boolean atEntrance()
+    {
+        return atEntrance;
+    }
+
     boolean isSynced()
     {
         return synced;
@@ -370,6 +400,35 @@ public class StreamAdvisor
     int revision()
     {
         return revision;
+    }
+
+    int infoRevision()
+    {
+        return infoRevision;
+    }
+
+    /** Something the info panel shows changed outside the advisor. */
+    void infoChanged()
+    {
+        infoRevision++;
+    }
+
+    /** Reads the panel settings again; called on start and on a change of this plugin's config. */
+    void configChanged()
+    {
+        showInfo = config.showInfo();
+        splitTimer = config.splitTimer();
+        infoRevision++;
+    }
+
+    boolean showInfo()
+    {
+        return showInfo;
+    }
+
+    boolean splitTimer()
+    {
+        return splitTimer;
     }
 
     /** The tile of this wall as of the last game tick, or null. */
@@ -442,6 +501,7 @@ public class StreamAdvisor
 
     private void clear()
     {
+        needsClear = false;
         target = -1;
         second = -1;
         marks = NO_MARKS;
@@ -454,8 +514,13 @@ public class StreamAdvisor
         lastY = -1;
         tearChanges.clear();
         tracker.reset();
+        if (atEntrance || streamOrder != null || orderSupported)
+        {
+            infoRevision++;
+        }
         inRegion = false;
         onPlane = false;
+        atEntrance = false;
         synced = false;
         streamOrder = null;
         orderText = null;
@@ -543,6 +608,7 @@ public class StreamAdvisor
         }
 
         int tick = lastGameTick + 1;
+        needsClear = true;
         if (spawned)
         {
             tracker.spawn(wall, colour, tick);

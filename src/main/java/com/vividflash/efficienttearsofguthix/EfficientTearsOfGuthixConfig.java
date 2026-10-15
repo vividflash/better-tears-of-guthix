@@ -37,7 +37,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "highlightMode",
         name = "Highlight",
         description = "",
-        position = 1
+        position = 10
     )
     default HighlightMode highlightMode()
     {
@@ -49,7 +49,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "bestColor",
         name = "Best wall colour",
         description = "",
-        position = 2
+        position = 20
     )
     default Color bestColor()
     {
@@ -61,7 +61,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "secondColor",
         name = "Second best colour",
         description = "",
-        position = 3
+        position = 30
     )
     default Color secondColor()
     {
@@ -72,7 +72,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showPossible",
         name = "Mark possible walls",
         description = "Walls the next blue stream can land on",
-        position = 4
+        position = 40
     )
     default boolean showPossible()
     {
@@ -84,7 +84,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "possibleMarkColor",
         name = "Possible wall colour",
         description = "",
-        position = 5
+        position = 50
     )
     default Color possibleMarkColor()
     {
@@ -95,7 +95,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showBad",
         name = "Mark bad walls",
         description = "Walls no blue stream can land on next, or a green one can",
-        position = 6
+        position = 60
     )
     default boolean showBad()
     {
@@ -107,7 +107,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "badMarkColor",
         name = "Bad wall colour",
         description = "",
-        position = 7
+        position = 70
     )
     default Color badMarkColor()
     {
@@ -118,7 +118,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showStreamTicks",
         name = "Stream countdown",
         description = "Ticks until your wall's blue stream moves",
-        position = 8
+        position = 80
     )
     default boolean showStreamTicks()
     {
@@ -129,7 +129,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showTearChange",
         name = "Tear change",
         description = "",
-        position = 12
+        position = 120
     )
     default boolean showTearChange()
     {
@@ -140,7 +140,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showInfo",
         name = "Info panel",
         description = "Stream order, session ticks left, and at Juna when to enter",
-        position = 9
+        position = 90
     )
     default boolean showInfo()
     {
@@ -151,7 +151,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "splitTimer",
         name = "Separate timer box",
         description = "Enter timing and ticks left in their own box",
-        position = 10
+        position = 100
     )
     default boolean splitTimer()
     {
@@ -162,7 +162,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "showSkill",
         name = "XP skill",
         description = "At Juna, the skill that gets the XP",
-        position = 11
+        position = 110
     )
     default boolean showSkill()
     {
@@ -173,7 +173,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "loginReminder",
         name = "Login reminder",
         description = "Chat message on login once the next run is open",
-        position = 13
+        position = 130
     )
     default boolean loginReminder()
     {
@@ -184,7 +184,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "allowBlueFirst",
         name = "Allow BBBGGG worlds",
         description = "",
-        position = 16
+        position = 160
     )
     default boolean allowBlueFirst()
     {
@@ -195,7 +195,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "deprioritiseJuna",
         name = "Deprioritise Juna",
         description = "On other stream orders, left click on Juna walks",
-        position = 15
+        position = 150
     )
     default boolean deprioritiseJuna()
     {
@@ -206,7 +206,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
         keyName = "deprioritiseGreen",
         name = "Deprioritise green walls",
         description = "Left click on a green wall walks",
-        position = 14
+        position = 140
     )
     default boolean deprioritiseGreen()
     {

@@ -127,7 +127,7 @@ public class StreamAdvisor
     private volatile int infoRevision;
     private volatile boolean showInfo;
     private volatile boolean splitTimer;
-    /** False from start until the first game tick: lastGameTick is stale until then. */
+    /** False from a clear until the first game tick in the region: lastGameTick is stale until then. */
     private volatile boolean ticked;
     private boolean deprioritiseJuna;
     private boolean deprioritiseGreen;
@@ -154,11 +154,8 @@ public class StreamAdvisor
     {
         try
         {
-            ticked = false;
             configChanged();
             clear();
-            ticksLeft = 0;
-            lastCountdown = -1;
         }
         catch (Exception e)
         {
@@ -226,10 +223,6 @@ public class StreamAdvisor
     {
         try
         {
-            int tick = client.getTickCount();
-            lastGameTick = tick;
-            ticked = true;
-
             Player local = client.getLocalPlayer();
             WorldPoint position = local == null ? null : local.getWorldLocation();
             if (position == null || position.getRegionID() != TogLayout.REGION)
@@ -240,6 +233,10 @@ public class StreamAdvisor
                 }
                 return;
             }
+
+            int tick = client.getTickCount();
+            lastGameTick = tick;
+            ticked = true;
 
             int countdown = client.getVarbitValue(VarbitID.TOG_COUNTDOWN);
             if (countdown != lastCountdown)
@@ -502,6 +499,7 @@ public class StreamAdvisor
     private void clear()
     {
         needsClear = false;
+        ticked = false;
         target = -1;
         second = -1;
         marks = NO_MARKS;
@@ -512,6 +510,9 @@ public class StreamAdvisor
         lastTears = -1;
         lastX = -1;
         lastY = -1;
+        lastCountdown = -1;
+        ticksLeft = 0;
+        counting = false;
         tearChanges.clear();
         tracker.reset();
         if (atEntrance || streamOrder != null || orderSupported)
@@ -579,18 +580,18 @@ public class StreamAdvisor
 
     /**
      * Only live observations count; the per tick wall read covers everything
-     * else. That includes anything before the first game tick after a start,
+     * else. That includes anything before the first game tick after a clear,
      * which could not be given a tick.
      */
     private void streamEvent(DecorativeObject object, boolean spawned)
     {
-        if (object == null || !ticked || client.getGameState() != GameState.LOGGED_IN)
+        if (object == null)
         {
             return;
         }
 
         int colour = colourOf(object.getId());
-        if (colour == TargetRule.EMPTY)
+        if (colour == TargetRule.EMPTY || !ticked || client.getGameState() != GameState.LOGGED_IN)
         {
             return;
         }

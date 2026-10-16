@@ -32,6 +32,7 @@ import java.util.List;
 import javax.inject.Inject;
 import net.runelite.api.Skill;
 import net.runelite.client.game.SkillIconManager;
+import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.ComponentOrientation;
@@ -66,6 +67,7 @@ class InfoOverlay extends OverlayPanel
         this.skillReward = skillReward;
         this.skillIconManager = skillIconManager;
         setPosition(OverlayPosition.TOP_LEFT);
+        setLayer(OverlayLayer.ABOVE_WIDGETS);
         setClearChildren(false);
     }
 
@@ -156,6 +158,11 @@ class InfoOverlay extends OverlayPanel
      */
     static boolean updateTimer(StreamAdvisor advisor, LineComponent line)
     {
+        if (!advisor.showInfo())
+        {
+            return false;
+        }
+
         int entryWait = advisor.entryWait();
         int ticksLeft = advisor.ticksLeft();
         if (entryWait == 0)
@@ -180,6 +187,6 @@ class InfoOverlay extends OverlayPanel
         {
             return false;
         }
-        return advisor.showInfo();
+        return true;
     }
 }

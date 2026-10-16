@@ -41,6 +41,8 @@ import net.runelite.api.GameObject;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.Tile;
+import net.runelite.api.TileObject;
+import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.FontManager;
@@ -67,6 +69,7 @@ class TargetOverlay extends Overlay
     private static final Color TICKS_COLOR = Color.WHITE;
     private static final Color TICKS_ENDING_COLOR = new Color(255, 140, 0);
     private static final int TICKS_ENDING = 3;
+    private static final Color DRY_TICKS_COLOR = Color.RED;
     private static final int TICKS_HEIGHT = 120;
 
     /** One wall to mark. A dim mark is a thin outline without a fill. */
@@ -79,9 +82,12 @@ class TargetOverlay extends Overlay
         final boolean outline;
         final Color colour;
         final boolean dim;
+        /** The object whose hull is drawn when there is no model to outline, found at rebuild. */
+        final TileObject hullOwner;
 
-        Mark(int wall, HighlightMode mode, Color colour, boolean dim, boolean outline)
+        Mark(int wall, HighlightMode mode, Color colour, boolean dim, boolean outline, TileObject hullOwner)
         {
+            this.hullOwner = hullOwner;
             this.wall = wall;
             this.tile = mode != HighlightMode.WALL;
             this.model = mode != HighlightMode.TILE;
@@ -166,10 +172,14 @@ class TargetOverlay extends Overlay
         ticksWall = -1;
         Arrays.fill(wallPoints, null);
         Arrays.fill(collectPoints, null);
+        if (!advisor.isSynced())
+        {
+            return;
+        }
 
         WorldView view = client.getTopLevelWorldView();
         HighlightMode mode = config.highlightMode();
-        if (view == null || mode == null || !advisor.isSynced())
+        if (view == null || mode == null)
         {
             return;
         }
@@ -222,14 +232,51 @@ class TargetOverlay extends Overlay
             ticksText = Integer.toString(ticks);
             ticksColour = ticks <= TICKS_ENDING ? TICKS_ENDING_COLOR : TICKS_COLOR;
         }
+        else if (own >= 0 && advisor.dryTicks() > 0)
+        {
+            ticksWall = own;
+            ticksText = Integer.toString(advisor.dryTicks());
+            ticksColour = DRY_TICKS_COLOR;
+        }
     }
 
     private void add(int wall, HighlightMode mode, Color colour, boolean dim)
     {
         if (colour != null)
         {
-            marks.add(new Mark(wall, mode, colour, dim, hasModel(wall)));
+            boolean outline = mode != HighlightMode.TILE && hasModel(wall);
+            TileObject hullOwner = mode != HighlightMode.TILE && !outline ? hullOwner(advisor.wallTile(wall)) : null;
+            marks.add(new Mark(wall, mode, colour, dim, outline, hullOwner));
         }
+    }
+
+    /** The first object on the tile that has a convex hull right now: a game object, else the wall object. */
+    private static TileObject hullOwner(Tile tile)
+    {
+        if (tile == null)
+        {
+            return null;
+        }
+
+        for (GameObject object : tile.getGameObjects())
+        {
+            if (object != null && object.getConvexHull() != null)
+            {
+                return object;
+            }
+        }
+        WallObject wallObject = tile.getWallObject();
+        return wallObject != null && wallObject.getConvexHull() != null ? wallObject : null;
+    }
+
+    /** The convex hull of a game or wall object, the two kinds {@link #hullOwner} returns. */
+    private static Shape hull(TileObject object)
+    {
+        if (object instanceof GameObject)
+        {
+            return ((GameObject) object).getConvexHull();
+        }
+        return object instanceof WallObject ? ((WallObject) object).getConvexHull() : null;
     }
 
     /** Ticks until the blue stream on the wall the player stands at moves, drawn on that wall. */
@@ -272,21 +319,11 @@ class TargetOverlay extends Overlay
             return;
         }
 
-        Shape hull = null;
-        if (tile != null)
+        Shape hull = hull(mark.hullOwner);
+        if (hull == null)
         {
-            for (GameObject object : tile.getGameObjects())
-            {
-                hull = object == null ? null : object.getConvexHull();
-                if (hull != null)
-                {
-                    break;
-                }
-            }
-            if (hull == null && tile.getWallObject() != null)
-            {
-                hull = tile.getWallObject().getConvexHull();
-            }
+            // nothing found at rebuild, or the object has no hull now: search the tile
+            hull = hull(hullOwner(tile));
         }
         draw(graphics, hull != null ? hull : tilePoly(wallPoints[mark.wall]), mark.colour, mark.dim);
     }

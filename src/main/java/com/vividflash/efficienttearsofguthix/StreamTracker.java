@@ -29,7 +29,7 @@ import java.util.Arrays;
 /**
  * Colour and age of the stream on each wall. Fed with live spawn and despawn
  * observations plus a per tick read of the walls; a stream whose spawn was not
- * seen live has an unknown age.
+ * seen live has an unknown age. No client types, so it can be unit tested.
  */
 final class StreamTracker
 {
@@ -48,14 +48,20 @@ final class StreamTracker
     private final boolean[] known = new boolean[WALLS];
 
     private int period = DEFAULT_PERIOD;
+    private boolean periodMeasured;
     private int lastSpawnTick = Integer.MIN_VALUE;
     private int lastSpawnWall = -1;
+    /** The result of order() as of the last change of the state above. */
+    private String order;
+    private boolean orderStale = true;
 
     void reset()
     {
+        orderStale = true;
         Arrays.fill(colour, TargetRule.EMPTY);
         Arrays.fill(known, false);
         period = DEFAULT_PERIOD;
+        periodMeasured = false;
         lastSpawnTick = Integer.MIN_VALUE;
         lastSpawnWall = -1;
     }
@@ -68,6 +74,7 @@ final class StreamTracker
             return;
         }
 
+        orderStale = true;
         colour[wall] = streamColour;
         spawnTick[wall] = tick;
         known[wall] = true;
@@ -91,12 +98,14 @@ final class StreamTracker
             return;
         }
 
+        orderStale = true;
         if (known[wall])
         {
             int lifetime = tick - spawnTick[wall];
             if (lifetime >= MIN_LIFETIME && lifetime <= MAX_LIFETIME)
             {
                 period = lifetime;
+                periodMeasured = true;
             }
         }
         colour[wall] = TargetRule.EMPTY;
@@ -110,6 +119,7 @@ final class StreamTracker
         {
             if (colour[wall] != seen[wall])
             {
+                orderStale = true;
                 colour[wall] = seen[wall];
                 spawnTick[wall] = tick;
                 known[wall] = false;
@@ -122,6 +132,11 @@ final class StreamTracker
         return colour[wall];
     }
 
+    boolean ageKnown(int wall)
+    {
+        return colour[wall] != TargetRule.EMPTY && known[wall];
+    }
+
     int spawnTick(int wall)
     {
         return spawnTick[wall];
@@ -130,6 +145,11 @@ final class StreamTracker
     int period()
     {
         return period;
+    }
+
+    boolean periodMeasured()
+    {
+        return periodMeasured;
     }
 
     boolean isSynced()
@@ -155,6 +175,16 @@ final class StreamTracker
      * two consecutive spawns. Null while not synced.
      */
     String order()
+    {
+        if (orderStale)
+        {
+            order = computeOrder();
+            orderStale = false;
+        }
+        return order;
+    }
+
+    private String computeOrder()
     {
         if (!isSynced())
         {

@@ -27,7 +27,7 @@ package com.vividflash.efficienttearsofguthix;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 
-/** Fixed geometry of the Tears of Guthix cave floor. */
+/** Fixed geometry of the Tears of Guthix cave floor. No client types, so it can be unit tested. */
 final class TogLayout
 {
     static final int WALLS = 9;
@@ -48,6 +48,7 @@ final class TogLayout
     private static final int UNREACHABLE = 99;
 
     private static final int[][] FLOOR_DISTANCE = buildFloorDistances();
+    private static final int[][] WALL_DISTANCE = buildWallDistances();
 
     private TogLayout()
     {
@@ -101,9 +102,26 @@ final class TogLayout
         return isFloor(x, y) ? new int[]{x, y} : new int[]{ENTRY_X, ENTRY_Y};
     }
 
+    /** X of {@link #startTile}, without the array. */
+    static int startX(int x, int y)
+    {
+        return isFloor(x, y) ? x : ENTRY_X;
+    }
+
+    /** Y of {@link #startTile}, without the array. */
+    static int startY(int x, int y)
+    {
+        return isFloor(x, y) ? y : ENTRY_Y;
+    }
+
     static int costToWall(int x, int y, int wall)
     {
         return distance(x, y, COLLECT_X[wall], COLLECT_Y[wall]);
+    }
+
+    static int wallDistance(int from, int to)
+    {
+        return WALL_DISTANCE[from][to];
     }
 
     /** Wall served by this collect tile, or -1. */
@@ -183,6 +201,19 @@ final class TogLayout
                         }
                     }
                 }
+            }
+        }
+        return distances;
+    }
+
+    private static int[][] buildWallDistances()
+    {
+        int[][] distances = new int[WALLS][WALLS];
+        for (int from = 0; from < WALLS; from++)
+        {
+            for (int to = 0; to < WALLS; to++)
+            {
+                distances[from][to] = distance(COLLECT_X[from], COLLECT_Y[from], COLLECT_X[to], COLLECT_Y[to]);
             }
         }
         return distances;

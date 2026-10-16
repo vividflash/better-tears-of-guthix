@@ -37,6 +37,7 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
@@ -103,24 +104,38 @@ public class SkillReward
     private boolean loginPending;
     /** Juna came into the scene: pick the skill on the next tick with stats loaded. */
     private boolean junaPending;
+    /** The XP skill setting, cached for the spawn handler. */
+    private boolean showSkill;
+    /** The XP skill and its refresh setting both on, cached for the stat handler. */
+    private boolean refreshSkill;
 
     void start()
     {
         skill = null;
-        fromLoginScreen = false;
+        // enabled on the login screen: the next login is not a world hop
+        fromLoginScreen = client.getGameState() == GameState.LOGIN_SCREEN;
         loginPending = false;
-        junaPending = true;
+        readConfig();
+        junaPending = showSkill;
     }
 
     /** A setting changed: pick again, so turning the XP skill on at Juna shows it. */
     void configChanged()
     {
-        junaPending = true;
+        readConfig();
+        junaPending = showSkill;
+    }
+
+    private void readConfig()
+    {
+        showSkill = config.showSkill();
+        refreshSkill = showSkill && config.refreshSkill();
     }
 
     /**
-     * The skill the tears' XP goes to if played now, as of the last login or
-     * the last time Juna came into the scene. Null before the first pick.
+     * The skill the tears' XP goes to if played now, as of the last login, the
+     * last time Juna came into the scene, or with the refresh setting on the
+     * last XP gain in the cave. Null before the first pick.
      */
     Skill skill()
     {
@@ -135,7 +150,7 @@ public class SkillReward
             GameState state = event.getGameState();
             if (state == GameState.LOGGED_IN)
             {
-                loginPending = fromLoginScreen;
+                loginPending = fromLoginScreen && config.loginReminder();
                 fromLoginScreen = false;
             }
             else if (state == GameState.LOGIN_SCREEN)
@@ -155,7 +170,17 @@ public class SkillReward
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event)
     {
-        if (event.getGameObject().getId() == ObjectID.TOG_JUNA)
+        if (showSkill && event.getGameObject().getId() == ObjectID.TOG_JUNA)
+        {
+            junaPending = true;
+        }
+    }
+
+    /** With the refresh setting on, an XP gain in the cave picks the skill again. */
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        if (refreshSkill && advisor.inArea())
         {
             junaPending = true;
         }

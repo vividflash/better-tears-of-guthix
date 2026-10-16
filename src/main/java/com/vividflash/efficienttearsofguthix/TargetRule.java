@@ -26,7 +26,8 @@ package com.vividflash.efficienttearsofguthix;
 
 /**
  * Fixed rule for the wall to stand at. A pure function of the wall colours,
- * the blue streams' remaining ticks and the player tile.
+ * the blue streams' remaining ticks and the player tile. No client types, so
+ * it can be unit tested.
  */
 final class TargetRule
 {
@@ -68,6 +69,8 @@ final class TargetRule
     static final int MARK_BAD = 1;
     /** A blue stream that has not moved yet can land here. */
     static final int MARK_POSSIBLE = 2;
+    /** No marks on any wall. Shared, never written to. */
+    static final int[] NO_MARKS = new int[TogLayout.WALLS];
 
     /** Ticks from the first stream's move to the last one's. */
     private static final int BURST_LENGTH = 6;
@@ -81,20 +84,41 @@ final class TargetRule
 
     private static final int WALLS = TogLayout.WALLS;
 
+    enum Reason
+    {
+        NONE,
+        STAY_BLUE,
+        LEAVE_LAST,
+        EARLY_LAST,
+        WAIT,
+        NEAREST,
+        LEAVE_GREEN,
+        LOCKED
+    }
+
     static final class Decision
     {
         /** Wall to stand at, or -1. */
         final int target;
         /** Nearest reachable blue wall other than the target, or -1. */
         final int second;
+        final Reason reason;
         /** Wall whose collect tile the player stands on, or -1. */
         final int playerWall;
+        final int startX;
+        final int startY;
+        /** Walking ticks from the start tile to each wall's collect tile. */
+        final int[] distance;
 
-        Decision(int target, int second, int playerWall)
+        Decision(int target, int second, Reason reason, int playerWall, int startX, int startY, int[] distance)
         {
             this.target = target;
             this.second = second;
+            this.reason = reason;
             this.playerWall = playerWall;
+            this.startX = startX;
+            this.startY = startY;
+            this.distance = distance;
         }
     }
 
@@ -106,6 +130,13 @@ final class TargetRule
      * @param colour per wall EMPTY, BLUE or GREEN
      * @param ticksUntilMove per wall, ticks until its stream moves, at least 1; read for blue walls only
      * @param previousTarget the wall chosen last tick, or -1
+     */
+    static Decision decide(int[] colour, int[] ticksUntilMove, int playerX, int playerY, int previousTarget)
+    {
+        return decide(colour, ticksUntilMove, playerX, playerY, previousTarget, false, 0);
+    }
+
+    /**
      * @param walking the player moved this tick; the previous target is then kept
      *     while it can still be reached, also on another wall's collect tile
      * @param sessionLeft session ticks left, 1 on the last tick that collects, 0 when no session is running
@@ -113,17 +144,29 @@ final class TargetRule
     static Decision decide(int[] colour, int[] ticksUntilMove, int playerX, int playerY, int previousTarget,
         boolean walking, int sessionLeft)
     {
+        return decide(colour, ticksUntilMove, playerX, playerY, previousTarget, walking, sessionLeft, false,
+            new int[WALLS], new boolean[WALLS], new int[WALLS]);
+    }
+
+    /**
+     * The same with caller owned per wall buffers, overwritten on every call.
+     * The returned distance is the {@code distance} buffer, valid until the next call with it.
+     *
+     * @param earlyLast on the last blue of a burst, target the wall the first blue moved to as soon as it
+     *     lands, and keep it until the move, so the click can be timed on the stream countdown
+     * @param collect ticks of collecting each wall still offers; only compared in the endgame
+     */
+    static Decision decide(int[] colour, int[] ticksUntilMove, int playerX, int playerY, int previousTarget,
+        boolean walking, int sessionLeft, boolean earlyLast, int[] distance, boolean[] reachable, int[] collect)
+    {
         boolean endgame = sessionLeft > 0 && sessionLeft <= ENDGAME
             && endsAsBurstStarts(colour, ticksUntilMove, sessionLeft);
-        int[] start = TogLayout.startTile(playerX, playerY);
+        int startX = TogLayout.startX(playerX, playerY);
+        int startY = TogLayout.startY(playerX, playerY);
         int playerWall = TogLayout.wallAtCollectTile(playerX, playerY);
-        int[] distance = new int[WALLS];
-        boolean[] reachable = new boolean[WALLS];
-        // ticks of collecting each wall still offers; only compared in the endgame
-        int[] collect = new int[WALLS];
         for (int wall = 0; wall < WALLS; wall++)
         {
-            distance[wall] = TogLayout.costToWall(start[0], start[1], wall);
+            distance[wall] = TogLayout.costToWall(startX, startY, wall);
             int present = endgame ? Math.min(ticksUntilMove[wall], sessionLeft) : ticksUntilMove[wall];
             collect[wall] = present - STOP_DELAY - distance[wall] - START_DELAY;
             int needed = endgame
@@ -134,49 +177,66 @@ final class TargetRule
         int[] prefer = endgame ? collect : null;
 
         int target;
+        Reason reason;
         if ((playerWall < 0 || walking) && previousTarget >= 0 && previousTarget < WALLS && reachable[previousTarget])
         {
             target = previousTarget;
+            reason = Reason.LOCKED;
         }
         else if (playerWall < 0)
         {
             target = nearestBlue(-1, reachable, distance, ticksUntilMove, prefer);
+            reason = Reason.NEAREST;
         }
         else if (colour[playerWall] == BLUE)
         {
-            if (lastOfBurst(playerWall, colour, ticksUntilMove))
+            int early = earlyLast
+                ? earlyTarget(playerWall, previousTarget, colour, ticksUntilMove, reachable, distance, prefer)
+                : -1;
+            if (early >= 0)
+            {
+                target = early;
+                reason = Reason.EARLY_LAST;
+            }
+            else if (lastOfBurst(playerWall, colour, ticksUntilMove))
             {
                 int other = nearestBlue(playerWall, reachable, distance, ticksUntilMove, prefer);
                 target = other >= 0 ? other : playerWall;
+                reason = Reason.LEAVE_LAST;
             }
             else
             {
                 target = playerWall;
+                reason = Reason.STAY_BLUE;
             }
         }
         else if (colour[playerWall] == GREEN)
         {
             int other = nearestBlue(playerWall, reachable, distance, ticksUntilMove, prefer);
             target = other >= 0 ? other : nearestNotGreen(playerWall, colour, distance);
+            reason = Reason.LEAVE_GREEN;
         }
         else if (pendingBlueMove(playerWall, colour, ticksUntilMove))
         {
             target = playerWall;
+            reason = Reason.WAIT;
         }
         else
         {
             int other = nearestBlue(playerWall, reachable, distance, ticksUntilMove, prefer);
             target = other >= 0 ? other : playerWall;
+            reason = Reason.NEAREST;
         }
 
         int second = -1;
-        if (target >= 0)
+        // the early target is the only wall shown, so the click goes there
+        if (target >= 0 && reason != Reason.EARLY_LAST)
         {
             reachable[target] = false;
             second = nearestBlue(-1, reachable, distance, ticksUntilMove, prefer);
         }
 
-        return new Decision(target, second, playerWall);
+        return new Decision(target, second, reason, playerWall, startX, startY, distance);
     }
 
     /** How many other blue streams move before the one on this wall. */
@@ -216,7 +276,6 @@ final class TargetRule
      */
     private static int[] blueFirstMarks(int[] colour, int[] ticksUntilMove, int period)
     {
-        int[] marks = new int[WALLS];
         int half = BURST_LENGTH / 2;
         boolean blueMoved = false;
         int lastBlue = -1;
@@ -245,9 +304,10 @@ final class TargetRule
         {
             if (!blueMoved && soonest > 1)
             {
-                return marks;
+                return NO_MARKS;
             }
 
+            int[] marks = new int[WALLS];
             for (int wall = 0; wall < WALLS; wall++)
             {
                 if (colour[wall] == EMPTY || (colour[wall] == BLUE && ticksUntilMove[wall] <= half))
@@ -256,9 +316,11 @@ final class TargetRule
                 }
             }
             marks[lastBlue] = MARK_BAD;
+            return marks;
         }
         else if (blueMoved && lastGreen >= 0)
         {
+            int[] marks = new int[WALLS];
             for (int wall = 0; wall < WALLS; wall++)
             {
                 if (colour[wall] == EMPTY
@@ -267,14 +329,14 @@ final class TargetRule
                     marks[wall] = MARK_BAD;
                 }
             }
+            return marks;
         }
-        return marks;
+        return NO_MARKS;
     }
 
     /** Marks for the order in which the green streams move first. */
     static int[] marks(int[] colour, int[] ticksUntilMove, int period)
     {
-        int[] marks = new int[WALLS];
         int movedGreens = 0;
         int last = -1;
         for (int wall = 0; wall < WALLS; wall++)
@@ -283,7 +345,6 @@ final class TargetRule
             {
                 if (ticksUntilMove[wall] > period - BURST_LENGTH)
                 {
-                    marks[wall] = MARK_BAD;
                     movedGreens++;
                 }
             }
@@ -296,9 +357,17 @@ final class TargetRule
 
         if (movedGreens == 0 || last < 0)
         {
-            return new int[WALLS];
+            return NO_MARKS;
         }
 
+        int[] marks = new int[WALLS];
+        for (int wall = 0; wall < WALLS; wall++)
+        {
+            if (colour[wall] == GREEN && ticksUntilMove[wall] > period - BURST_LENGTH)
+            {
+                marks[wall] = MARK_BAD;
+            }
+        }
         marks[last] = MARK_BAD;
         if (movedGreens < 3)
         {
@@ -363,6 +432,38 @@ final class TargetRule
         return latest + period;
     }
 
+    /**
+     * On the last blue of a burst, the wall the first blue moved to: picked once it
+     * lands with {@link #BURST_WINDOW} ticks left here, then kept while reachable.
+     * Blues that move before the one here are ignored. -1 when there is no such
+     * wall; the normal leave-last step then applies.
+     */
+    private static int earlyTarget(int playerWall, int previousTarget, int[] colour, int[] ticksUntilMove,
+        boolean[] reachable, int[] distance, int[] prefer)
+    {
+        int own = ticksUntilMove[playerWall];
+        if (own > BURST_WINDOW)
+        {
+            return -1;
+        }
+
+        for (int wall = 0; wall < WALLS; wall++)
+        {
+            if (wall != playerWall && colour[wall] == BLUE
+                && ticksUntilMove[wall] >= own && ticksUntilMove[wall] <= own + BURST_WINDOW)
+            {
+                return -1;
+            }
+        }
+
+        if (previousTarget >= 0 && previousTarget < WALLS && previousTarget != playerWall
+            && reachable[previousTarget])
+        {
+            return previousTarget;
+        }
+        return own == BURST_WINDOW ? nearestBlue(playerWall, reachable, distance, ticksUntilMove, prefer) : -1;
+    }
+
     /** The stream here is about to move and every other blue one has already moved on. */
     private static boolean lastOfBurst(int playerWall, int[] colour, int[] ticksUntilMove)
     {
@@ -380,6 +481,23 @@ final class TargetRule
             }
         }
         return true;
+    }
+
+    /**
+     * Ticks until the last blue stream the {@link Reason#WAIT} step waits for
+     * has moved, 0 when none is pending.
+     */
+    static int waitTicks(int playerWall, int[] colour, int[] ticksUntilMove)
+    {
+        int ticks = 0;
+        for (int wall = 0; wall < WALLS; wall++)
+        {
+            if (wall != playerWall && colour[wall] == BLUE && ticksUntilMove[wall] <= BURST_WINDOW)
+            {
+                ticks = Math.max(ticks, ticksUntilMove[wall]);
+            }
+        }
+        return ticks;
     }
 
     private static boolean pendingBlueMove(int playerWall, int[] colour, int[] ticksUntilMove)

@@ -126,6 +126,28 @@ public interface EfficientTearsOfGuthixConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "showDryTicks",
+        name = "Dry wall countdown",
+        description = "In red, ticks until the wait at a dry wall ends",
+        position = 85
+    )
+    default boolean showDryTicks()
+    {
+        return false;
+    }
+
+    @ConfigItem(
+        keyName = "reactionSpeed",
+        name = "Reaction speed",
+        description = "Ticks you take to click. At 1, the last blue stream shows the next wall a tick early, to click on the countdown",
+        position = 87
+    )
+    default ReactionSpeed reactionSpeed()
+    {
+        return ReactionSpeed.INSTANT;
+    }
+
+    @ConfigItem(
         keyName = "showTearChange",
         name = "Tear change",
         description = "",
@@ -170,6 +192,17 @@ public interface EfficientTearsOfGuthixConfig extends Config
     }
 
     @ConfigItem(
+        keyName = "refreshSkill",
+        name = "Refresh XP skill",
+        description = "Picks the skill again after each XP gain while Juna stays loaded",
+        position = 115
+    )
+    default boolean refreshSkill()
+    {
+        return false;
+    }
+
+    @ConfigItem(
         keyName = "loginReminder",
         name = "Login reminder",
         description = "Chat message on login once the next run is open",
@@ -194,7 +227,7 @@ public interface EfficientTearsOfGuthixConfig extends Config
     @ConfigItem(
         keyName = "deprioritiseJuna",
         name = "Deprioritise Juna",
-        description = "On other stream orders, left click on Juna walks",
+        description = "Until the stream order is synced and supported, left click on Juna walks",
         position = 150
     )
     default boolean deprioritiseJuna()

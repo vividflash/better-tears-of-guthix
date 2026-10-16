@@ -27,6 +27,7 @@ package com.vividflash.efficienttearsofguthix;
 import java.awt.Dimension;
 import java.awt.Graphics2D;
 import javax.inject.Inject;
+import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.components.LineComponent;
@@ -45,6 +46,7 @@ class TimerOverlay extends OverlayPanel
     {
         this.advisor = advisor;
         setPosition(OverlayPosition.TOP_LEFT);
+        setLayer(OverlayLayer.ABOVE_WIDGETS);
         setClearChildren(false);
         panelComponent.getChildren().add(timer);
     }
@@ -59,11 +61,19 @@ class TimerOverlay extends OverlayPanel
                 return null;
             }
 
+            if (!advisor.splitTimer() || !advisor.showInfo())
+            {
+                // Forget the build so turning the split back on rebuilds at once.
+                timerRevision = -1;
+                timerShown = false;
+                return null;
+            }
+
             int revision = advisor.revision();
             if (revision != timerRevision)
             {
                 timerRevision = revision;
-                timerShown = advisor.splitTimer() && InfoOverlay.updateTimer(advisor, timer);
+                timerShown = InfoOverlay.updateTimer(advisor, timer);
             }
             return timerShown ? super.render(graphics) : null;
         }

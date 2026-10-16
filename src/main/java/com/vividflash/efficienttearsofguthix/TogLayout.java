@@ -27,7 +27,7 @@ package com.vividflash.efficienttearsofguthix;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 
-/** Fixed geometry of the Tears of Guthix cave floor. */
+/** Fixed geometry of the Tears of Guthix cave floor. No client types, so it can be unit tested. */
 final class TogLayout
 {
     static final int WALLS = 9;
@@ -99,6 +99,18 @@ final class TogLayout
     static int[] startTile(int x, int y)
     {
         return isFloor(x, y) ? new int[]{x, y} : new int[]{ENTRY_X, ENTRY_Y};
+    }
+
+    /** X of {@link #startTile}, without the array. */
+    static int startX(int x, int y)
+    {
+        return isFloor(x, y) ? x : ENTRY_X;
+    }
+
+    /** Y of {@link #startTile}, without the array. */
+    static int startY(int x, int y)
+    {
+        return isFloor(x, y) ? y : ENTRY_Y;
     }
 
     static int costToWall(int x, int y, int wall)

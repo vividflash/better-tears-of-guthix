@@ -24,9 +24,22 @@
  */
 package com.vividflash.efficienttearsofguthix;
 
-public enum HighlightMode
+/** Ticks the player takes to click after the target changes. */
+public enum ReactionSpeed
 {
-    WALL,
-    TILE,
-    BOTH
+    INSTANT("0"),
+    ONE_TICK("1");
+
+    private final String label;
+
+    ReactionSpeed(String label)
+    {
+        this.label = label;
+    }
+
+    @Override
+    public String toString()
+    {
+        return label;
+    }
 }

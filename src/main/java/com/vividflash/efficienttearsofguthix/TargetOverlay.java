@@ -31,6 +31,7 @@ import java.awt.Font;
 import java.awt.Graphics2D;
 import java.awt.Shape;
 import java.awt.Stroke;
+import java.awt.geom.Area;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -41,6 +42,8 @@ import net.runelite.api.GameObject;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
 import net.runelite.api.Tile;
+import net.runelite.api.TileObject;
+import net.runelite.api.WallObject;
 import net.runelite.api.WorldView;
 import net.runelite.api.coords.LocalPoint;
 import net.runelite.client.ui.FontManager;
@@ -67,6 +70,7 @@ class TargetOverlay extends Overlay
     private static final Color TICKS_COLOR = Color.WHITE;
     private static final Color TICKS_ENDING_COLOR = new Color(255, 140, 0);
     private static final int TICKS_ENDING = 3;
+    private static final Color DRY_TICKS_COLOR = Color.RED;
     private static final int TICKS_HEIGHT = 120;
 
     /** One wall to mark. A dim mark is a thin outline without a fill. */
@@ -75,17 +79,24 @@ class TargetOverlay extends Overlay
         final int wall;
         final boolean tile;
         final boolean model;
-        /** The object on the wall has a model to outline. */
-        final boolean outline;
+        /** How to draw the object on the wall, or null when it has no model to draw. */
+        final WallStyle style;
         final Color colour;
         final boolean dim;
+        /** The object whose hull is drawn when there is no model to outline, found at rebuild. */
+        final TileObject hullOwner;
+        /** The rebuild searched the tile for a hull owner, so a null hullOwner means there is none. */
+        final boolean searched;
 
-        Mark(int wall, HighlightMode mode, Color colour, boolean dim, boolean outline)
+        Mark(int wall, boolean model, boolean tile, Color colour, boolean dim, WallStyle style, boolean searched,
+            TileObject hullOwner)
         {
+            this.hullOwner = hullOwner;
+            this.searched = searched;
             this.wall = wall;
-            this.tile = mode != HighlightMode.WALL;
-            this.model = mode != HighlightMode.TILE;
-            this.outline = outline;
+            this.tile = tile;
+            this.model = model;
+            this.style = style;
             this.colour = colour;
             this.dim = dim;
         }
@@ -122,7 +133,7 @@ class TargetOverlay extends Overlay
     {
         try
         {
-            if (!advisor.inArea() || !advisor.onPlane())
+            if (!advisor.inArea() || !advisor.onPlane() || !advisor.orderSupported())
             {
                 return null;
             }
@@ -166,10 +177,19 @@ class TargetOverlay extends Overlay
         ticksWall = -1;
         Arrays.fill(wallPoints, null);
         Arrays.fill(collectPoints, null);
+        boolean model = config.highlightWall();
+        boolean tile = config.highlightTile();
+        boolean possible = config.showPossible();
+        boolean bad = config.showBad();
+        boolean ticksOn = config.showStreamTicks();
+        if (!model && !tile && !ticksOn && !config.showDryTicks() && !possible && !bad)
+        {
+            return;
+        }
 
         WorldView view = client.getTopLevelWorldView();
-        HighlightMode mode = config.highlightMode();
-        if (view == null || mode == null || !advisor.isSynced())
+        WallStyle style = config.wallStyle();
+        if (view == null || style == null)
         {
             return;
         }
@@ -181,55 +201,119 @@ class TargetOverlay extends Overlay
         }
 
         int wall = advisor.targetWall();
-        int second = advisor.secondWall();
-        int[] wallMarks = advisor.wallMarks();
         boolean move = advisor.shouldMove();
-        boolean possible = config.showPossible();
-        boolean bad = config.showBad();
-        for (int other = 0; other < TogLayout.WALLS; other++)
+        boolean showSecond = config.showSecond();
+        int second = showSecond ? advisor.secondWall() : -1;
+        if (bad || (possible && (model || tile)))
         {
-            if (move && (other == wall || other == second))
+            int[] wallMarks = advisor.wallMarks();
+            for (int other = 0; other < TogLayout.WALLS; other++)
             {
-                continue;
-            }
-            if (bad && wallMarks[other] == TargetRule.MARK_BAD)
-            {
-                add(other, HighlightMode.TILE, config.badMarkColor(), true);
-            }
-            else if (possible && wallMarks[other] == TargetRule.MARK_POSSIBLE)
-            {
-                add(other, mode, config.possibleMarkColor(), true);
+                if (other == wall || (move && other == second && showSecond))
+                {
+                    continue;
+                }
+                if (bad && wallMarks[other] == TargetRule.MARK_BAD)
+                {
+                    add(other, false, true, style, config.badMarkColor(), true);
+                }
+                else if (possible && wallMarks[other] == TargetRule.MARK_POSSIBLE)
+                {
+                    add(other, model, tile, style, config.possibleMarkColor(), true);
+                }
             }
         }
 
-        if (move)
+        // the best wall stays highlighted while you stand on it; the second best only when moving
+        if (model || tile)
         {
-            if (second >= 0)
+            if (move && second >= 0 && showSecond)
             {
-                add(second, mode, config.secondColor(), false);
+                add(second, model, tile, style, config.secondColor(), false);
             }
             if (wall >= 0)
             {
-                add(wall, mode, config.bestColor(), false);
+                add(wall, model, tile, style, config.bestColor(), false);
             }
         }
 
+        boolean dryOn = config.showDryTicks();
+        if (!ticksOn && !dryOn)
+        {
+            return;
+        }
+
         int own = advisor.ownWall();
-        int ticks = advisor.ownTicks();
-        if (config.showStreamTicks() && own >= 0 && ticks > 0)
+        int ticks = ticksOn && own >= 0 ? advisor.ownTicks() : 0;
+        if (ticks > 0)
         {
             ticksWall = own;
             ticksText = Integer.toString(ticks);
             ticksColour = ticks <= TICKS_ENDING ? TICKS_ENDING_COLOR : TICKS_COLOR;
         }
+        else if (own >= 0 && advisor.dryTicks() > 0)
+        {
+            ticksWall = own;
+            ticksText = Integer.toString(advisor.dryTicks());
+            ticksColour = DRY_TICKS_COLOR;
+        }
     }
 
-    private void add(int wall, HighlightMode mode, Color colour, boolean dim)
+    private void add(int wall, boolean model, boolean tile, WallStyle style, Color colour, boolean dim)
     {
-        if (colour != null)
+        if (colour != null && (model || tile))
         {
-            marks.add(new Mark(wall, mode, colour, dim, hasModel(wall)));
+            Tile wallTile = model ? advisor.wallTile(wall) : null;
+            WallStyle drawn = model && hasModel(wall) ? style : null;
+            // a stream drawn as a hull falls back to the tile's hull owner when its own hull is null
+            boolean search = model && (drawn == null || drawn == WallStyle.HULL);
+            TileObject hullOwner = search ? hullOwner(wallTile) : null;
+            marks.add(new Mark(wall, model, tile, colour, dim, drawn, search, hullOwner));
         }
+    }
+
+    /** The hull of the whole stream object: both renderables, joined when both have one. */
+    private static Shape streamHull(DecorativeObject tears)
+    {
+        Shape first = tears.getConvexHull();
+        Shape second = tears.getConvexHull2();
+        if (first == null || second == null)
+        {
+            return first != null ? first : second;
+        }
+
+        Area area = new Area(first);
+        area.add(new Area(second));
+        return area;
+    }
+
+    /** The first object on the tile that has a convex hull right now: a game object, else the wall object. */
+    private static TileObject hullOwner(Tile tile)
+    {
+        if (tile == null)
+        {
+            return null;
+        }
+
+        for (GameObject object : tile.getGameObjects())
+        {
+            if (object != null && object.getConvexHull() != null)
+            {
+                return object;
+            }
+        }
+        WallObject wallObject = tile.getWallObject();
+        return wallObject != null && wallObject.getConvexHull() != null ? wallObject : null;
+    }
+
+    /** The convex hull of a game or wall object, the two kinds {@link #hullOwner} returns. */
+    private static Shape hull(TileObject object)
+    {
+        if (object instanceof GameObject)
+        {
+            return ((GameObject) object).getConvexHull();
+        }
+        return object instanceof WallObject ? ((WallObject) object).getConvexHull() : null;
     }
 
     /** Ticks until the blue stream on the wall the player stands at moves, drawn on that wall. */
@@ -260,33 +344,36 @@ class TargetOverlay extends Overlay
             && (StreamAdvisor.colourOf(tears.getId()) != TargetRule.EMPTY || tears.getConvexHull() != null);
     }
 
-    /** Outlines the model of the object on the wall; without one, the hull of what stands there, or its tile. */
+    /** Draws the object on the wall in the wall style; without a model, the hull of what stands there, or its tile. */
     private void markWall(Graphics2D graphics, Mark mark)
     {
         Tile tile = advisor.wallTile(mark.wall);
         DecorativeObject tears = tile == null ? null : tile.getDecorativeObject();
-        if (tears != null && mark.outline)
+        Shape hull = null;
+        if (tears != null && mark.style != null)
         {
-            outlineRenderer.drawOutline(tears, mark.dim ? DIM_OUTLINE_WIDTH : OUTLINE_WIDTH, mark.colour,
-                OUTLINE_FEATHER);
-            return;
+            int width = mark.dim ? DIM_OUTLINE_WIDTH : OUTLINE_WIDTH;
+            switch (mark.style)
+            {
+                case OUTLINE:
+                    outlineRenderer.drawOutline(tears, width, mark.colour, OUTLINE_FEATHER);
+                    return;
+                case HULL:
+                    hull = streamHull(tears);
+                    break;
+            }
+            if (hull != null)
+            {
+                draw(graphics, hull, mark.colour, mark.dim);
+                return;
+            }
         }
 
-        Shape hull = null;
-        if (tile != null)
+        hull = hull(mark.hullOwner);
+        if (hull == null && !(mark.searched && mark.hullOwner == null))
         {
-            for (GameObject object : tile.getGameObjects())
-            {
-                hull = object == null ? null : object.getConvexHull();
-                if (hull != null)
-                {
-                    break;
-                }
-            }
-            if (hull == null && tile.getWallObject() != null)
-            {
-                hull = tile.getWallObject().getConvexHull();
-            }
+            // the object found at rebuild has no hull now, or the stream lost its model or hull: search the tile
+            hull = hull(hullOwner(tile));
         }
         draw(graphics, hull != null ? hull : tilePoly(wallPoints[mark.wall]), mark.colour, mark.dim);
     }

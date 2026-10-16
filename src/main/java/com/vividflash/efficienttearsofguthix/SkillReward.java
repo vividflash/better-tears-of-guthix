@@ -37,6 +37,7 @@ import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.StatChanged;
 import net.runelite.api.gameval.ObjectID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
@@ -80,7 +81,6 @@ public class SkillReward
     private static final String LAST_RUN_KEY = "lastRun";
     /** The game's line at the end of a run. */
     private static final String RUN_END_MESSAGE = "Tears collected: ";
-
     @Inject
     private Client client;
 
@@ -98,29 +98,43 @@ public class SkillReward
 
     private volatile Skill skill;
     /** The login screen was seen, so the next login is not a world hop. */
-    private boolean fromLoginScreen;
+    private volatile boolean fromLoginScreen;
     /** Logged in from the login screen, the reminder is still to be checked. */
-    private boolean loginPending;
+    private volatile boolean loginPending;
     /** Juna came into the scene: pick the skill on the next tick with stats loaded. */
-    private boolean junaPending;
+    private volatile boolean junaPending;
+    /** The XP skill setting, cached for the spawn handler. */
+    private volatile boolean showSkill;
+    /** The XP skill and its refresh setting both on, cached for the stat handler. */
+    private volatile boolean refreshSkill;
 
     void start()
     {
         skill = null;
-        fromLoginScreen = false;
+        // enabled on the login screen: the next login is not a world hop
+        fromLoginScreen = client.getGameState() == GameState.LOGIN_SCREEN;
         loginPending = false;
-        junaPending = true;
+        readConfig();
+        junaPending = showSkill;
     }
 
     /** A setting changed: pick again, so turning the XP skill on at Juna shows it. */
     void configChanged()
     {
-        junaPending = true;
+        readConfig();
+        junaPending = showSkill;
+    }
+
+    private void readConfig()
+    {
+        showSkill = config.showSkill();
+        refreshSkill = showSkill && config.refreshSkill();
     }
 
     /**
-     * The skill the tears' XP goes to if played now, as of the last login or
-     * the last time Juna came into the scene. Null before the first pick.
+     * The skill the tears' XP goes to if played now, as of the last login, the
+     * last time Juna came into the scene, or with the refresh setting on the
+     * last XP gain in the cave. Null before the first pick.
      */
     Skill skill()
     {
@@ -135,7 +149,7 @@ public class SkillReward
             GameState state = event.getGameState();
             if (state == GameState.LOGGED_IN)
             {
-                loginPending = fromLoginScreen;
+                loginPending = fromLoginScreen && config.loginReminder();
                 fromLoginScreen = false;
             }
             else if (state == GameState.LOGIN_SCREEN)
@@ -155,7 +169,17 @@ public class SkillReward
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event)
     {
-        if (event.getGameObject().getId() == ObjectID.TOG_JUNA)
+        if (showSkill && event.getGameObject().getId() == ObjectID.TOG_JUNA)
+        {
+            junaPending = true;
+        }
+    }
+
+    /** With the refresh setting on, an XP gain in the cave picks the skill again. */
+    @Subscribe
+    public void onStatChanged(StatChanged event)
+    {
+        if (refreshSkill && advisor.inArea())
         {
             junaPending = true;
         }
@@ -182,14 +206,16 @@ public class SkillReward
     {
         try
         {
-            if ((!junaPending && !loginPending) || client.getOverallExperience() <= 0)
+            // outside the cave a pending Juna pick waits for the first tick inside
+            boolean juna = junaPending && advisor.inArea();
+            if ((!juna && !loginPending) || client.getOverallExperience() <= 0)
             {
                 return;
             }
 
             // on login the skills are only checked when the reminder is due
             boolean remind = loginPending && config.loginReminder() && ready();
-            if ((junaPending && config.showSkill()) || remind)
+            if ((juna && config.showSkill()) || remind)
             {
                 Skill picked = pick(client.getSkillExperiences(), eligible());
                 if (picked != skill)
@@ -198,7 +224,10 @@ public class SkillReward
                     advisor.infoChanged();
                 }
             }
-            junaPending = false;
+            if (juna)
+            {
+                junaPending = false;
+            }
             loginPending = false;
             if (remind)
             {
@@ -259,7 +288,10 @@ public class SkillReward
         return best;
     }
 
-    /** A run was recorded and the next one is open. False with no run recorded. */
+    /**
+     * A run was recorded and the next one is open. False with no run recorded.
+     * Not checking for the quest point or 100,000 XP requirement because it is unnecessary.
+     */
     private boolean ready()
     {
         Long lastRun = configManager.getRSProfileConfiguration(CONFIG_GROUP, LAST_RUN_KEY, Long.class);

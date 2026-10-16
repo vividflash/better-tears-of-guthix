@@ -52,8 +52,8 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
     private static final String LAST_SEEN_VERSION_KEY = "lastSeenVersion";
 
     /** The release the one-time notice below belongs to, not the packaged version. */
-    static final String VERSION = "0.2";
-    private static final String UPDATE_MESSAGE = "Patch 0.2; Which Skill gets XP shown at Juna, optional login reminder, changed minimum Ticks to 0/1/3  which beat the current 1/2/3 at every reaction (worst entry: +0.85 / +0.15 / +0.08 tears)";
+    static final String VERSION = "0.3";
+    private static final String UPDATE_MESSAGE = "Patch 0.3; Multiple Performance Improvements, Added Toggles, a Countdown and Settings for Reaction Speed";
 
     /** Dark red for the one-time notice, legible on either chatbox background. */
     private static final Color UPDATE_MESSAGE_COLOR = new Color(0x8B0000);
@@ -88,54 +88,50 @@ public class EfficientTearsOfGuthixPlugin extends Plugin
     @Inject
     private TearChangeOverlay tearChangeOverlay;
 
+    /** The stored version already equals {@link #VERSION}, so logins skip the config read. */
+    private boolean noticeHandled;
+
     @Override
     protected void startUp()
     {
-        try
-        {
-            streamAdvisor.start();
-            eventBus.register(streamAdvisor);
-            skillReward.start();
-            eventBus.register(skillReward);
-            overlayManager.add(targetOverlay);
-            overlayManager.add(infoOverlay);
-            overlayManager.add(timerOverlay);
-            overlayManager.add(tearChangeOverlay);
-        }
-        catch (Exception e)
-        {
-            streamAdvisor.report("startUp", e);
-        }
+        noticeHandled = false;
+        streamAdvisor.start();
+        eventBus.register(streamAdvisor);
+        skillReward.start();
+        eventBus.register(skillReward);
+        overlayManager.add(targetOverlay);
+        overlayManager.add(infoOverlay);
+        overlayManager.add(timerOverlay);
+        overlayManager.add(tearChangeOverlay);
     }
 
     @Override
     protected void shutDown()
     {
-        try
-        {
-            overlayManager.remove(targetOverlay);
-            overlayManager.remove(infoOverlay);
-            overlayManager.remove(timerOverlay);
-            overlayManager.remove(tearChangeOverlay);
-            eventBus.unregister(skillReward);
-            eventBus.unregister(streamAdvisor);
-            streamAdvisor.stop();
-        }
-        catch (Exception e)
-        {
-            streamAdvisor.report("shutDown", e);
-        }
+        overlayManager.remove(targetOverlay);
+        overlayManager.remove(infoOverlay);
+        overlayManager.remove(timerOverlay);
+        overlayManager.remove(tearChangeOverlay);
+        eventBus.unregister(skillReward);
+        eventBus.unregister(streamAdvisor);
+        streamAdvisor.stop();
     }
 
     /**
      * Shows the update notice once, on the first login after the version
-     * changes. The stored version gates it, so no per-login flag is needed.
+     * changes. The stored version gates it; once it matches, a flag skips the
+     * config read on later logins.
      */
     @Subscribe
     public void onGameStateChanged(GameStateChanged event)
     {
-        if (event.getGameState() != GameState.LOGGED_IN
-            || VERSION.equals(configManager.getConfiguration(CONFIG_GROUP, LAST_SEEN_VERSION_KEY)))
+        if (noticeHandled || event.getGameState() != GameState.LOGGED_IN)
+        {
+            return;
+        }
+
+        noticeHandled = true;
+        if (VERSION.equals(configManager.getConfiguration(CONFIG_GROUP, LAST_SEEN_VERSION_KEY)))
         {
             return;
         }
